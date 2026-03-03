@@ -8,6 +8,7 @@ IA3 XAI LAB provides an integrated environment that allows users to:
 - Evaluate model performance using standard metrics and visualizations.
 - Apply local and global explainability techniques to better understand model behavior.
 - Analyze feature importance using different methodological approaches.
+- 
 The tool has been developed as an accessible and interactive platform aimed at promoting transparency, interpretability, and trust in Artificial Intelligence systems. It is intended for both technical users and non-expert profiles who require an intuitive interface to experiment with machine learning models and their explanations within a unified environment.
 
 The repository includes:
