@@ -1,0 +1,403 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import shap
+from lime.lime_tabular import LimeTabularExplainer
+from sklearn.inspection import PartialDependenceDisplay
+from sklearn.inspection import partial_dependence
+from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
+
+def fig_univar_hist_box(x: pd.Series, col: str, bins="auto"):
+    """
+    Devuelve una figura con histograma + boxplot para una serie numérica.
+    """
+    fig, axes = plt.subplots(
+        1, 2,
+        figsize=(12, 4),
+        gridspec_kw={"width_ratios": [3, 1]},
+        constrained_layout=True  # mejor que tight_layout en muchos casos
+    )
+
+    axes[0].hist(x, bins=bins, edgecolor="black", linewidth=1.0)
+    axes[0].set_title(f"Histograma: {col}")
+    axes[0].set_xlabel(col)
+    axes[0].set_ylabel("Frecuencia")
+
+    axes[1].boxplot(x, vert=True)
+    axes[1].set_title(f"Boxplot: {col}")
+    axes[1].set_xticks([])
+
+    return fig
+
+
+def fig_bivar_scatter(tmp, feature: str, target: str):
+    """
+    Devuelve una figura con histograma + boxplot para una serie numérica.
+    """
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.scatter(tmp[feature], tmp[target])
+    ax.set_title(f"{feature} vs {target}")
+    ax.set_xlabel(feature)
+    ax.set_ylabel(target)
+    plt.tight_layout()
+    return fig
+
+
+def fig_matrix_corr(n: int, corr_plot, method: str, st):
+    # Ajuste de tamaño según número de variables (para que no se vea enano)
+    fig_w = min(16, 1.2 + 0.6 * n)
+    fig_h = min(12, 1.2 + 0.6 * n)
+
+    fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+    im = ax.imshow(corr_plot, vmin=-1, vmax=1, cmap="Blues")  # tonos azules
+
+    # Ticks
+    ax.set_xticks(range(n))
+    ax.set_yticks(range(n))
+    ax.set_xticklabels(corr_plot.columns, rotation=45, ha="right")
+    ax.set_yticklabels(corr_plot.index)
+
+    # Colorbar
+    cbar = fig.colorbar(im, ax=ax)
+    cbar.set_label(f"Correlación ({method})")
+
+    # Anotaciones por celda (si el tamaño no es enorme)
+    # (más de ~25 columnas suele ser ilegible, así que lo limitamos)
+    if n <= 25:
+        for i in range(n):
+            for j in range(n):
+                val = corr_plot.iloc[i, j]
+                if pd.notna(val):
+                    ax.text(j, i, format(val, ".2f"), ha="center", va="center", fontsize=8)
+    else:
+        st.info("Hay muchas variables (>25). Se muestran sin anotaciones para mejorar legibilidad.")
+
+    ax.set_title(f"Matriz de correlación ({method})")
+    plt.tight_layout()
+    
+    return fig
+
+
+def class_balance_hist(y):
+    """
+    Barplot con el conteo de cada clase (más intuitivo que histograma para categóricas).
+    Mantengo el nombre para no tocar imports en app.py.
+    """
+    counts = pd.Series(y).value_counts(dropna=False)
+
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+    ax.bar(counts.index.astype(str), counts.values, edgecolor="black", linewidth=1.0)
+
+    y_max = counts.values.max()
+    ax.set_ylim(0, y_max * 1.15)
+    ax.set_title("Conteo por clase")
+    ax.set_xlabel("Clase")
+    ax.set_ylabel("Frecuencia")
+
+    # Etiquetas encima de las barras (opcional, pero útil)
+    for i, v in enumerate(counts.values):
+        ax.text(i, v, str(int(v)), ha="center", va="bottom", fontsize=9)
+
+    plt.tight_layout()
+
+    return fig
+
+
+def fig_confusion_matrix(y_true, y_pred, labels=None, normalize=None, title="Matriz de confusión"):
+    """
+    normalize: None | 'true' | 'pred' | 'all'
+    """
+    cm = confusion_matrix(y_true, y_pred, labels=labels, normalize=normalize)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
+    disp.plot(ax=ax, cmap="Blues", colorbar=False, values_format=".2f" if normalize else "d")
+    ax.set_title(title)
+    plt.tight_layout()
+    return fig
+
+
+def fig_global_importance_bar(values, feature_names, title="Importancia global", top_n=20):
+    """
+    Barplot horizontal con las importancias (ordenadas). Muestra top_n.
+    """
+    values = np.asarray(values, dtype=float)
+    feature_names = np.asarray(feature_names, dtype=str)
+
+    # ordenar por valor absoluto
+    order = np.argsort(np.abs(values))[::-1]
+    order = order[: min(top_n, len(order))]
+
+    vals = values[order]
+    names = feature_names[order]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    ax.barh(range(len(vals))[::-1], vals)
+    ax.set_yticks(range(len(vals))[::-1])
+    ax.set_yticklabels(names)
+    ax.set_title(title)
+    ax.set_xlabel("Importancia")
+    plt.tight_layout()
+    return fig
+
+
+def fig_pdp_ice(estimator, X, features, kind="average", target=None):
+    """
+    kind: 'average' (PDP) | 'individual' (ICE)
+    features: list[str] o list[int] o list[tuple]
+    target: para multiclass (índice de clase) o None
+    """
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    PartialDependenceDisplay.from_estimator(
+        estimator,
+        X,
+        features=features,
+        kind=kind,
+        target=target,
+        ax=ax
+    )
+    plt.tight_layout()
+    return fig
+
+
+def pdp_plot(clf, x, feature_idx, classes, multiclass):
+    results = partial_dependence(clf, x, features=[feature_idx])
+    if hasattr(results, "values"):
+        feature_values = results['values'][0]
+    elif hasattr(results, "grid_values"):
+        feature_values = results["grid_values"][0]
+    else:
+        raise Exception
+    pdp_values = results['average']
+
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+    for i, line in enumerate(pdp_values[classes]):
+        label = f"Clase {clf.classes_[classes[i]]}" if multiclass else clf.classes_[1]
+        ax.plot(feature_values, line, label=label)
+    fig.legend(loc='center left', bbox_to_anchor=(1, .75))
+
+    return fig
+
+
+def lime_plot(clf, x_train, x_test, features, instance=None):
+    explainer = LimeTabularExplainer(
+        x_train.values,  # LIME trabaja con numpy
+        feature_names=list(features),
+        class_names=clf.classes_,
+        discretize_continuous=False
+    )
+
+    if instance is None:
+        instance = np.random.randint(0, x_test.shape[0])
+
+    sample = x_test.iloc[instance].values  # 1D numpy para LIME (ok)
+
+    def predict_fn(x_np):
+        x_df = pd.DataFrame(x_np, columns=list(features))  # <- recupera nombres
+        if hasattr(clf, "predict_proba"):
+            return clf.predict_proba(x_df)
+        return clf.decision_function(x_df)
+
+    explanation = explainer.explain_instance(
+        sample,
+        predict_fn,
+        num_features=len(features),
+        top_labels=1
+    )
+
+    feature_importance = explanation.as_list(explanation.top_labels[0])[::-1]
+    feats, importances = zip(*feature_importance)
+
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+    plt.xticks(rotation=45)
+    ax.barh(feats, np.array(importances), label=f'Clase {clf.classes_[explanation.top_labels[0]]}')
+    ax.set_ylabel('Características')
+    ax.set_xlabel('Valor LIME')
+    ax.set_title(f"Explicaciones LIME instancia {instance}")
+    ax.legend()
+    return fig
+
+
+def shapley_importance(shap_values, classes, features):
+    # Crear una figura para la importancia global de las características
+    plt.figure(figsize=(8, 6))
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+
+    importances = np.zeros((len(features), len(classes)))
+    acumulado = np.zeros(len(features))
+
+    # Iterar sobre cada etiqueta (clase) y calcular la importancia de Shapley
+    for i, class_name in enumerate(classes):
+        # Obtener valores absolutos medios de SHAP para la clase actual
+        shap_importance = np.abs(shap_values[:, :, i].values).mean(axis=0)
+        importances[:, i] = shap_importance
+
+    for i in range(len(classes)):
+        ax.barh(features, importances[:, i], left=acumulado, label=f'Clase {classes[i]}')
+        acumulado += importances[:, i]  # Acumular para la siguiente clase
+
+    plt.ylabel('Índice de la Característica')
+    plt.xlabel('Importancia SHAP Media')
+    plt.title('Importancia SHAP por Característica y Clase')
+    plt.legend()
+
+    return fig
+
+
+def shapley_summary(clf, shap_values, features, class_name, X_test):
+    class_idx = np.where(clf.classes_ == class_name)[0][0]
+    fig = plt.figure()
+    shap.summary_plot(shap_values[:, :, class_idx],
+                      X_test,
+                      feature_names=[f'Feature {feat}' for feat in features],
+                      show=False)
+    plt.title(f"Shapley summary for class {class_name}")
+
+    return fig
+
+
+def shapley_dependence(clf, shap_values, features, feature_name, class_name, X_test):
+    feature_idx = np.where(features == feature_name)[0][0]
+    class_idx = np.where(clf.classes_ == class_name)[0][0]
+
+    feature_name = features[feature_idx]
+
+    fig, ax = plt.subplots()
+    shap.dependence_plot(feature_name,
+                         shap_values.values[:, :, class_idx],
+                         X_test,
+                         interaction_index=None,
+                         show=False,
+                         ax=ax)
+    plt.title(f"Shapley dependence for class {class_name}, feature {feature_name}")
+
+    return fig
+
+
+def distribution_hist(y):
+    """
+    Histograma de distribución con Matplotlib para variables continuas.
+    Mantiene el nombre para compatibilidad con la estructura heredada.
+    """
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+
+    ax.hist(y, bins="auto", edgecolor="black", linewidth=1.0, alpha=0.7)
+
+    mean_val = np.mean(y)
+    median_val = np.median(y)
+
+    ax.axvline(mean_val, color='red', linestyle='--', label=f'Media: {mean_val:.2f}')
+    ax.axvline(median_val, color='green', linestyle='-', label=f'Mediana: {median_val:.2f}')
+
+    ax.set_title("Distribución de la variable Target (Regresión)")
+    ax.set_xlabel("Valor del Target")
+    ax.set_ylabel("Frecuencia")
+    ax.legend(fontsize=8)
+
+    plt.tight_layout()
+    return fig
+
+
+def fig_regression_results(y_true, y_pred):
+    """
+    Gráfico de dispersión para comparar valores reales vs predichos.
+    """
+    fig, ax = plt.subplots(figsize=(8, 5))
+
+    # Scatter plot de los datos
+    ax.scatter(y_true, y_pred, alpha=0.5, color='blue', edgecolors='k', label='Predicciones')
+
+    # Línea de referencia (predicción perfecta)
+    lims = [
+        np.min([ax.get_xlim(), ax.get_ylim()]),
+        np.max([ax.get_xlim(), ax.get_ylim()]),
+    ]
+    ax.plot(lims, lims, 'r--', alpha=0.75, zorder=3, label='Predicción Perfecta')
+
+    ax.set_aspect('equal')
+    ax.set_xlim(lims)
+    ax.set_ylim(lims)
+
+    ax.set_xlabel('Valores Reales')
+    ax.set_ylabel('Predicciones')
+    ax.set_title('Evaluación de Regresión: Real vs Predicho')
+    ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.6)
+
+    plt.tight_layout()
+    return fig
+
+
+def lime_plot_reg(model, X_train, X_test, features, instance=None):
+    explainer = LimeTabularExplainer(
+        X_train.values,
+        mode="regression",
+        feature_names=list(features),
+        discretize_continuous=False,
+        random_state=42
+    )
+
+    if instance is None:
+        instance = np.random.randint(0, X_test.shape[0])
+
+    sample = X_test.iloc[instance].values
+
+    def predict_fn(x_np):
+        x_df = pd.DataFrame(x_np, columns=list(features))
+        return model.predict(x_df)
+
+    explanation = explainer.explain_instance(sample, predict_fn, num_features=len(features))
+
+    feature_importance = explanation.as_list()[::-1]
+    feats, importances = zip(*feature_importance)
+
+    fig, ax = plt.subplots(figsize=(7, 2.8))
+    ax.barh(feats, np.array(importances))
+    ax.set_ylabel('Características')
+    ax.set_xlabel('Valor LIME')
+    ax.set_title(f"Explicaciones LIME instancia {instance}")
+    plt.xticks(rotation=45)
+    return fig
+
+
+def pdp_plot_reg(model, X_train, features):
+    results = partial_dependence(model, X_train, features=features)
+    if hasattr(results, "values"):
+        feature_values = results['values'][0]
+    elif hasattr(results, "grid_values"):
+        feature_values = results["grid_values"][0]
+    else:
+        raise Exception
+    pdp_values = results['average'][0]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(feature_values, pdp_values, label=f"PDP - {features}")
+    plt.xlabel(f"{features}")
+    plt.title("Parcial Dependence Plot")
+    plt.legend()
+    plt.grid(True)
+    plt.tight_layout()
+
+    return fig
+
+
+def shapley_importance_reg(shap_values, features):
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    shap_importance = np.abs(shap_values.values).mean(axis=0)
+    ax.barh(features, shap_importance)
+
+    plt.ylabel('Índice de la Característica')
+    plt.xlabel('Importancia SHAP Media')
+    plt.title('Importancia SHAP por Característica y Clase')
+
+    return fig
+
+
+def shapley_summary_reg(shap_values, features, X_test):
+    fig = plt.figure()
+    shap.summary_plot(shap_values, X_test, feature_names=[f'Feature {feat}' for feat in features])
+    plt.title("Shapley summary")
+
+    return fig
