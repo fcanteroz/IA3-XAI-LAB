@@ -8,25 +8,9 @@ from src.regression import *
 import os
 
 
-# def footer():
-#     st.markdown("---")
-#     st.markdown(
-#         """
-#
-#         <div style="
-#             text-align:center;
-#             padding: 12px 0 24px 0;
-#             color: #666;
-#             font-size: 0.9rem;">
-#             © 2026 · IA3 XAI LAB · Hecho con Streamlit
-#         </div>
-#         """,
-#         unsafe_allow_html=True
-#     )
-
 def footer(file_path):
     st.markdown("---")
-    imagenes = st.columns(5)
+    imagenes = st.columns(6)
     path = os.path.join(file_path, "img", "footer")
     for img_col, img_path in zip(imagenes, os.listdir(path)):
         img_col.image(os.path.join(path, img_path))
@@ -38,6 +22,7 @@ def stop(file_path):
     footer(file_path)
     st.stop()
 
+
 #################################################################
 ################# PARAMETRIZACIÓN ###############################
 #################################################################
@@ -48,22 +33,19 @@ icon_path = os.path.join(file_path, "img", "icon.jpeg")
 
 st.set_page_config(page_title="IA3 XAI LAB", page_icon=f"{file_path}/img/icon.jpeg", layout="wide")
 
-col1, col2 = st.columns([1, 8], vertical_alignment="center")
+col1, col2 = st.columns([1, 10], vertical_alignment="bottom")
 with col1:
-    st.image(f"{file_path}/img/icon.jpeg", width=70)
+    st.image(f"{file_path}/img/icon.jpeg", width=100)
 with col2:
-    st.title("IA3 XAI LAB")
+    st.title("IA3 XAI LAB",)
 
 #################################################################
 ################# CARGA DE DATOS ################################
 #################################################################
 st.write("Sube un archivo **CSV** o **Excel** para empezar.")
 
-uploaded = st.file_uploader(
-    "Sube un archivo",
-    type=["csv", "xlsx", "xls"],
-    label_visibility="collapsed",  # o "hidden"
-)
+uploaded = st.file_uploader("📁 Subir archivo", type=["csv", "xlsx", "xls"],
+                            on_change=st.session_state.clear)
 
 if uploaded is None:
     st.info("Sube un archivo para continuar.")
@@ -118,8 +100,8 @@ while problem_type is None:
     st.info("Selecciona el tipo de problema para continuar")
     footer(file_path)
     st.stop()
-else:
-    datos, model_tab = st.tabs(["Datos", problem_type])
+
+datos, model_tab = st.tabs(["Datos", problem_type])
 
 with datos:
     try:
@@ -146,8 +128,7 @@ with datos:
         with left:
             st.markdown("**Variables del dataset**")
             vars_df = df.dtypes.reset_index().rename(columns={"index": "Variable", 0: "Tipo"})
-            ## CAMBIO: Añadir filea de abajo
-            vars_df["Tipo"] = vars_df["Tipo"].astype(str)  # <- FIX Arrow
+            vars_df["Tipo"] = vars_df["Tipo"].astype(str)
             st.dataframe(vars_df, height=200, use_container_width=True)
 
 
@@ -155,8 +136,6 @@ with datos:
             st.markdown("**Descripciónde variables del dataset**")
             desc = df.describe(include="all")
             st.dataframe(desc, use_container_width=True)
-
-
 
         #################################################################
         ################# ANÁLISIS UNIVARIANTE ##########################
@@ -199,8 +178,6 @@ with datos:
             fig = fig_univar_hist_box(x, col, bins=bins_opt)
             st.pyplot(fig, clear_figure=True)
 
-
-
         #################################################################
         ################# ANÁLISIS BIVARIANTE ###########################
         #################################################################
@@ -238,7 +215,6 @@ with datos:
             with col_center:
                 st.pyplot(fig, clear_figure=True)
 
-
         #################################################################
         ################# MATRIZ CORRELACIÓN ############################
         #################################################################
@@ -270,11 +246,10 @@ with datos:
             col_left, col_center, col_right = st.columns([1, 2, 1])
             with col_center:
                 st.pyplot(fig, clear_figure=True)
-   
 
     finally:
         footer(file_path)
-        
+
 #############################################
 ######## CLASIFICACIÓN ######################
 #############################################
@@ -365,10 +340,10 @@ if problem_type == "Clasificacion":
                 st.stop()
 
             elif multiclass:
-                model_type_select, estimator_select = st.columns([2, 1])
+                estimator_select, model_type_select = st.columns([2, 1])
 
                 with model_type_select:
-                    model_type = st.selectbox("Método", get_model_list(multiclass), index=0, key="model")
+                    model_type = st.selectbox("Estrategia", get_model_list(multiclass), index=0, key="model")
 
                 # Solo mostrar estimador si es OVO/OVR
                 if model_type in ("OneVsOne", "OneVsRest"):
@@ -378,7 +353,8 @@ if problem_type == "Clasificacion":
                 model_type = st.selectbox("Modelo", get_model_list(multiclass), index=0, key="model")
 
             # Parametrización del modelo (UI dinámica)
-            params = render_hyperparams_ui(model_type, key_prefix="hp_bin" if not multiclass else "hp_multi")
+            params = render_hyperparams_ui(model_type if not multiclass else estimator,
+                                           key_prefix="hp_bin" if not multiclass else "hp_multi")
 
             # =========================
             # Entrenamiento (solo cuando se pulsa el submit)
@@ -465,15 +441,15 @@ if problem_type == "Clasificacion":
                 with checker:
                     st.write(".")
                     random = st.toggle("Instancia random", value=True,
-                                    on_change=lambda: setattr(st.session_state,
-                                                                "instance_select",
-                                                                None if random is False else 0))
+                                       on_change=lambda: setattr(st.session_state,
+                                                                 "instance_select",
+                                                                 None if random is False else 0))
                 with selector:
                     instance = st.number_input(label="Instance",
-                                            min_value=0,
-                                            max_value=len(X_test)-1,
-                                            key="instance_select",
-                                            disabled=random)
+                                               min_value=0,
+                                               max_value=len(X_test) - 1,
+                                               key="instance_select",
+                                               disabled=random)
                 fig = lime_plot(clf, X_train, X_test, features=features, instance=instance)
                 _, plot, _ = st.columns([1, 6, 1])
                 with plot:
@@ -484,9 +460,9 @@ if problem_type == "Clasificacion":
                 st.subheader("Partial Dependence Plot")
                 # Seleccionar la característica para la que calcular PDP
                 feature_idx = st.segmented_control("Variable para PDP",
-                                                features,
-                                                selection_mode="single",
-                                                default=None)
+                                                   features,
+                                                   selection_mode="single",
+                                                   default=None)
                 # Seleccionar las clases para las que calcular PDP
                 if multiclass:
                     seleccion = st.segmented_control("Clase objetivo", clf.classes_, selection_mode="multi")
@@ -514,7 +490,8 @@ if problem_type == "Clasificacion":
                 if st.session_state.shap_values is None:
                     st.info("El cálculo de los valores SHAP puede llevar mucho rato si el conjunto es muy grande.")
 
-                if st.button("Calcular valores SHAP" if st.session_state.shap_values is None else "Recalcular valores SHAP"):
+                if st.button(
+                        "Calcular valores SHAP" if st.session_state.shap_values is None else "Recalcular valores SHAP"):
                     with st.spinner("Calculando valores SHAP. Si el conjunto es muy grande, podría llevar un rato..."):
                         st.session_state.shap_values = shapley_values(clf, X_train, X_test)
                 if st.session_state.shap_values is not None:
@@ -527,43 +504,42 @@ if problem_type == "Clasificacion":
 
                     st.subheader("Shapley Summary")
                     class_name_shap_sum = st.segmented_control("Clase para el análisis",
-                                                            clf.classes_,
-                                                            selection_mode="single",
-                                                            default=clf.classes_[0],
-                                                            key="class_shap_sum")
+                                                               clf.classes_,
+                                                               selection_mode="single",
+                                                               default=clf.classes_[0],
+                                                               key="class_shap_sum")
                     if class_name_shap_sum is not None:
                         fig = shapley_summary(clf,
-                                            st.session_state.shap_values,
-                                            features,
-                                            class_name_shap_sum,
-                                            X_test)
+                                              st.session_state.shap_values,
+                                              features,
+                                              class_name_shap_sum,
+                                              X_test)
                         _, plot, _ = st.columns([1, 6, 1])
                         with plot:
                             st.pyplot(fig, clear_figure=True)
 
                     st.subheader("Shapley Dependence")
                     feature_name_shap_dep = st.segmented_control("Variable para shapley dependence",
-                                                                features,
-                                                                selection_mode="single",
-                                                                default=df_sample.columns[0])
+                                                                 features,
+                                                                 selection_mode="single",
+                                                                 default=df_sample.columns[0])
                     class_name_shap_dep = st.segmented_control("Clase para el análisis",
-                                                            clf.classes_,
-                                                            selection_mode="single",
-                                                            default=clf.classes_[0],
-                                                            key="class_shap_dep")
+                                                               clf.classes_,
+                                                               selection_mode="single",
+                                                               default=clf.classes_[0],
+                                                               key="class_shap_dep")
 
                     if feature_name_shap_dep is not None and class_name_shap_dep is not None:
                         fig = shapley_dependence(clf,
-                                                st.session_state.shap_values,
-                                                features,
-                                                feature_name_shap_dep,
-                                                class_name_shap_dep,
-                                                X_test)
+                                                 st.session_state.shap_values,
+                                                 features,
+                                                 feature_name_shap_dep,
+                                                 class_name_shap_dep,
+                                                 X_test)
 
                         _, plot, _ = st.columns([1, 6, 1])
                         with plot:
                             st.pyplot(fig, clear_figure=True)
-
 
             # --- EXPLICABILIDAD GLOBAL ---
             with st.expander("IMPORTANCIA DE VARIABLES", expanded=False):
@@ -577,7 +553,8 @@ if problem_type == "Clasificacion":
                     st.warning("No hay variables numéricas en X. La explicabilidad global requiere features numéricas.")
                 else:
                     if X_train_num.shape[1] != X_train.shape[1]:
-                        st.info("Se usará solo la parte numérica de X para la explicabilidad global (hay columnas no numéricas).")
+                        st.info("Se usará solo la parte numérica de X para la explicabilidad global (hay columnas "
+                                "no numéricas).")
 
                     feature_names = X_train_num.columns.tolist()
                     n_features = len(feature_names)
@@ -605,7 +582,8 @@ if problem_type == "Clasificacion":
                     if opt == "Importancia del modelo":
                         out = get_model_feature_importance(clf, feature_names)
                         if out is None:
-                            st.warning("Este modelo no expone `feature_importances_` (solo disponible en árboles/ensembles).")
+                            st.warning("Este modelo no expone `feature_importances_` "
+                                       "(solo disponible en árboles/ensembles).")
                         else:
                             values, names = out
                             fig = fig_global_importance_bar(
@@ -626,7 +604,7 @@ if problem_type == "Clasificacion":
                             key="xai_perm_repeats"
                         )
                         values, names = get_permutation_importance(clf, X_test_num, y_test, feature_names, "accuracy",
-                                                                n_repeats=n_rep, random_state=42)
+                                                                   n_repeats=n_rep, random_state=42)
                         fig = fig_global_importance_bar(
                             values, names,
                             title="Importancia por permutación (mean)",
@@ -709,8 +687,8 @@ elif problem_type == "Regresion":
                     format="%.2f",
                     key="size_select_reg",
                     on_change=lambda: setattr(st.session_state,
-                                            "trained",
-                                            False)
+                                              "trained",
+                                              False)
                 )
 
             # Realizamos la partición
@@ -735,7 +713,7 @@ elif problem_type == "Regresion":
 
             # Selección del tipo de modelo
             model_type = st.selectbox("Modelo", get_model_list_reg(), index=0, key="model_reg",
-                                    on_change=lambda: setattr(st.session_state,
+                                      on_change=lambda: setattr(st.session_state,
                                                                 "trained",
                                                                 False))
             # Parametrización del modelo (UI dinámica)
@@ -811,15 +789,15 @@ elif problem_type == "Regresion":
                     with checker:
                         st.write(".")
                         random = st.toggle("Instancia random", value=True,
-                                        on_change=lambda: setattr(st.session_state,
-                                                                    "instance_select",
-                                                                    None if not random else 0))
+                                           on_change=lambda: setattr(st.session_state,
+                                                                     "instance_select",
+                                                                     None if not random else 0))
                     with selector:
                         instance = st.number_input(label="Instance",
-                                                min_value=0,
-                                                max_value=len(X_test) - 1,
-                                                key="instance_select",
-                                                disabled=random)
+                                                   min_value=0,
+                                                   max_value=len(X_test) - 1,
+                                                   key="instance_select",
+                                                   disabled=random)
                     fig = lime_plot_reg(clf, X_train, X_test, features=features, instance=instance)
                     _, plot, _ = st.columns([1, 6, 1])
                     with plot:
@@ -830,9 +808,9 @@ elif problem_type == "Regresion":
                     st.subheader("Partial Dependence Plot")
                     # Seleccionar la característica para la que calcular PDP
                     feature_idx = st.segmented_control("Variable para PDP",
-                                                    features,
-                                                    selection_mode="single",
-                                                    default=None)
+                                                       features,
+                                                       selection_mode="single",
+                                                       default=None)
 
                     if feature_idx is not None:
                         try:
@@ -853,7 +831,8 @@ elif problem_type == "Regresion":
 
                     if st.button(
                             "Calcular valores SHAP" if st.session_state.shap_values is None else "Recalcular valores SHAP"):
-                        with st.spinner("Calculando valores SHAP. Si el conjunto es muy grande, podría llevar un rato..."):
+                        with st.spinner("Calculando valores SHAP. Si el conjunto es muy grande,"
+                                        " podría llevar un rato..."):
                             st.session_state.shap_values = shapley_values_reg(clf, X_train, X_test)
                     if st.session_state.shap_values is not None:
                         st.subheader("Shapley Importance")
@@ -876,11 +855,12 @@ elif problem_type == "Regresion":
                     X_test_num = X_test.select_dtypes(include=["number"])
 
                     if X_train_num.shape[1] == 0:
-                        st.warning("No hay variables numéricas en X. La explicabilidad global requiere features numéricas.")
+                        st.warning("No hay variables numéricas en X. La explicabilidad global requiere features"
+                                   " numéricas.")
                     else:
                         if X_train_num.shape[1] != X_train.shape[1]:
-                            st.info(
-                                "Se usará solo la parte numérica de X para la explicabilidad global (hay columnas no numéricas).")
+                            st.info("Se usará solo la parte numérica de X para la explicabilidad global (hay columnas"
+                                    " no numéricas).")
 
                         feature_names = X_train_num.columns.tolist()
                         n_features = len(feature_names)
@@ -908,8 +888,8 @@ elif problem_type == "Regresion":
                         if opt == "Importancia del modelo":
                             out = get_model_feature_importance(clf, feature_names)
                             if out is None:
-                                st.warning(
-                                    "Este modelo no expone `feature_importances_` (solo disponible en árboles/ensembles).")
+                                st.warning("Este modelo no expone `feature_importances_` "
+                                           "(solo disponible en árboles/ensembles).")
                             else:
                                 values, names = out
                                 fig = fig_global_importance_bar(
@@ -930,7 +910,7 @@ elif problem_type == "Regresion":
                                 key="xai_perm_repeats"
                             )
                             values, names = get_permutation_importance(clf, X_test_num, y_test, feature_names, "r2",
-                                                                    n_repeats=n_rep, random_state=42)
+                                                                       n_repeats=n_rep, random_state=42)
                             fig = fig_global_importance_bar(
                                 values, names,
                                 title="Importancia por permutación (mean)",
