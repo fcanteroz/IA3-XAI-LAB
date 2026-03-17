@@ -181,13 +181,8 @@ def pdp_plot(clf, x, feature_idx, classes, multiclass):
 
 
 def lime_plot(clf, x_train, x_test, features, instance=None):
-    explainer = LimeTabularExplainer(
-        x_train.values,  # LIME trabaja con numpy
-        feature_names=list(features),
-        class_names=clf.classes_,
-        discretize_continuous=False
-    )
-
+    explainer = LimeTabularExplainer(x_train, feature_names=features, class_names=clf.classes_,
+                                     discretize_continuous=False)
     if instance is None:
         instance = np.random.randint(0, x_test.shape[0])
 
@@ -199,12 +194,9 @@ def lime_plot(clf, x_train, x_test, features, instance=None):
             return clf.predict_proba(x_df)
         return clf.decision_function(x_df)
 
-    explanation = explainer.explain_instance(
-        sample,
-        predict_fn,
-        num_features=len(features),
-        top_labels=1
-    )
+    # Explicación de LIME para la
+    explanation = explainer.explain_instance(sample, predict_fn, num_features=len(features),
+                                             top_labels=1)
 
     feature_importance = explanation.as_list(explanation.top_labels[0])[::-1]
     feats, importances = zip(*feature_importance)
@@ -358,6 +350,7 @@ def lime_plot_reg(model, X_train, X_test, features, instance=None):
     ax.set_xlabel('Valor LIME')
     ax.set_title(f"Explicaciones LIME instancia {instance}")
     plt.xticks(rotation=45)
+
     return fig
 
 
